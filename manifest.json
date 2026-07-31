@@ -1,0 +1,25 @@
+{
+  "manifest_version": 3,
+  "name": "Buganizer Self-View Blocker",
+  "version": "1.0",
+  "description": "Stops Buganizer's read_timestamp request so opening your own issue reports doesn't count as a view.",
+  "action": {
+    "default_popup": "popup.html"
+  },
+  "declarative_net_request": {
+    "rule_resources": [
+      {
+        "id": "ruleset_1",
+        "enabled": true,
+        "path": "rules.json"
+      }
+    ]
+  },
+  "permissions": [
+    "declarativeNetRequest",
+    "declarativeNetRequestFeedback"
+  ],
+  "host_permissions": [
+    "*://issuetracker.google.com/*"
+  ]
+}
