@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "Buganizer Self-View Blocker",
-  "version": "3.11",
+  "version": "3.19",
   "description": "Blocks self-views and tracks 7-day view count changes on your reports.",
   "action": {
     "default_popup": "popup.html",
@@ -27,7 +27,8 @@
   "permissions": [
     "storage",
     "notifications",
-    "webRequest"
+    "webRequest",
+    "tabs"
   ],
   "host_permissions": [
     "*://issuetracker.google.com/*"

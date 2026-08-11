@@ -88,7 +88,7 @@ async function processViewData(issueViews, email) {
     }
 
     if (views7d > snap.current) {
-      const ev = { ts: now, id, title, from: snap.current, to: views7d };
+      const ev = { ts: now, id, title, from: snap.current, to: views7d, email };
       changelog.unshift(ev);
       snap.current = views7d;
       changed = true;

@@ -123,6 +123,7 @@ function resetBaselines(allSnaps) {
 }
 
 let allSnapshots = {};
+let allChangelog = [];
 let currentEmail = null;
 
 function switchAccount(email) {
@@ -130,6 +131,9 @@ function switchAccount(email) {
   currentSnapshots = allSnapshots[email] || {};
   renderSnapshots(currentSnapshots, currentFilter);
   renderSummary(currentSnapshots);
+  const filtered = allChangelog.filter(ev => !ev.email || ev.email === email);
+  renderChangelog(filtered);
+  document.getElementById('changeCount').textContent = filtered.length || '';
 }
 
 chrome.action.setBadgeText({ text: '' });
@@ -139,6 +143,7 @@ chrome.storage.local.get(['snapshots', 'changelog', 'blockingEnabled', 'accounts
   const accounts = store.accounts || [];
 
   allSnapshots = rawSnaps;
+  allChangelog = store.changelog || [];
 
   const select = document.getElementById('accountSelect');
   const accountBar = document.getElementById('accountBar');
@@ -149,13 +154,28 @@ chrome.storage.local.get(['snapshots', 'changelog', 'blockingEnabled', 'accounts
     select.addEventListener('change', () => switchAccount(select.value));
   }
 
-  currentEmail = accounts[0] || 'default';
-  currentSnapshots = allSnapshots[currentEmail] || {};
+  // Detect which account is active from the current tab URL (cc: or reporter: in query)
+  chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
+    let detected = null;
+    const tab = tabs && tabs[0];
+    if (tab && tab.url && tab.url.includes('issuetracker.google.com')) {
+      try {
+        const q = new URL(tab.url).searchParams.get('q') || '';
+        const m = q.match(/\b(?:cc|reporter):([^\s]+@[^\s]+)/i);
+        if (m && accounts.includes(m[1].toLowerCase())) detected = m[1].toLowerCase();
+      } catch(e) {}
+    }
 
-  renderSnapshots(currentSnapshots, currentFilter);
-  renderChangelog(store.changelog || []);
-  document.getElementById('changeCount').textContent = (store.changelog || []).length || '';
-  applyToggleUI(store.blockingEnabled !== false);
-  renderSummary(currentSnapshots);
-  resetBaselines(rawSnaps);
+    currentEmail = detected || accounts[0] || 'default';
+    if (accounts.length > 1) select.value = currentEmail;
+    currentSnapshots = allSnapshots[currentEmail] || {};
+
+    const filteredLog = allChangelog.filter(ev => !ev.email || ev.email === currentEmail);
+    renderSnapshots(currentSnapshots, currentFilter);
+    renderChangelog(filteredLog);
+    document.getElementById('changeCount').textContent = filteredLog.length || '';
+    applyToggleUI(store.blockingEnabled !== false);
+    renderSummary(currentSnapshots);
+    resetBaselines(rawSnaps);
+  });
 });
