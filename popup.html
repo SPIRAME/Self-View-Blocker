@@ -3,16 +3,232 @@
 <head>
   <meta charset="UTF-8">
   <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+
     body {
       font-family: -apple-system, "Segoe UI", Roboto, Arial, sans-serif;
-      width: 220px;
-      padding: 16px;
-      margin: 0;
+      font-size: 12px;
+      width: 400px;
+      max-height: 580px;
+      display: flex;
+      flex-direction: column;
+      background: #fff;
+      color: #202124;
+    }
+
+    header {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      padding: 10px 14px 8px;
+      background: #1a73e8;
+      color: #fff;
+    }
+    header h1 { font-size: 13px; font-weight: 600; flex: 1; }
+    .badge {
+      background: #fff;
+      color: #1a73e8;
+      border-radius: 10px;
+      padding: 1px 7px;
+      font-size: 11px;
+      font-weight: 700;
+      min-width: 20px;
       text-align: center;
     }
+
+    .summary-bar {
+      padding: 4px 14px;
+      background: #e8f0fe;
+      font-size: 10px;
+      color: #3c4043;
+      border-bottom: 1px solid #d2e3fc;
+    }
+
+    /* Main tabs */
+    .tabs {
+      display: flex;
+      border-bottom: 1px solid #e0e0e0;
+      background: #fff;
+    }
+    .tab {
+      flex: 1;
+      padding: 7px 0;
+      text-align: center;
+      cursor: pointer;
+      font-size: 11px;
+      color: #5f6368;
+      border-bottom: 2px solid transparent;
+      transition: color .15s, border-color .15s;
+    }
+    .tab.active { color: #1a73e8; border-bottom-color: #1a73e8; font-weight: 600; }
+
+    /* Filter sub-tabs */
+    .filter-bar {
+      display: flex;
+      gap: 4px;
+      padding: 5px 14px;
+      background: #f8f9fa;
+      border-bottom: 1px solid #e0e0e0;
+    }
+    .filter-tab {
+      padding: 2px 8px;
+      font-size: 10px;
+      border: 1px solid #dadce0;
+      border-radius: 10px;
+      cursor: pointer;
+      background: #fff;
+      color: #5f6368;
+      transition: background .1s, color .1s;
+    }
+    .filter-tab.active {
+      background: #1a73e8;
+      color: #fff;
+      border-color: #1a73e8;
+    }
+
+    .panel { display: none; overflow-y: auto; flex: 1; }
+    .panel.active { display: block; }
+
+    /* ── Issue rows ── */
+    .issue-row {
+      display: flex;
+      align-items: center;
+      padding: 6px 14px;
+      border-bottom: 1px solid #f1f3f4;
+      gap: 8px;
+    }
+    .issue-row.changed { background: #f0f7f0; }
+    .issue-row:last-child { border-bottom: none; }
+
+    .issue-title {
+      flex: 1;
+      overflow: hidden;
+      white-space: nowrap;
+      text-overflow: ellipsis;
+      font-size: 11px;
+      min-width: 0;
+    }
+    .issue-title a { color: #1a73e8; text-decoration: none; }
+    .issue-title a:hover { text-decoration: underline; }
+
+    .views-pill {
+      display: flex;
+      align-items: center;
+      gap: 3px;
+      white-space: nowrap;
+      flex-shrink: 0;
+    }
+    .views-now { font-weight: 700; font-size: 12px; color: #202124; }
+
+
+    .delta {
+      font-size: 10px; font-weight: 600;
+      border-radius: 8px; padding: 1px 5px;
+    }
+    .delta.up   { color: #137333; background: #e6f4ea; }
+    .delta.flat { color: #9aa0a6; background: #f1f3f4; font-weight: 400; }
+
+    /* ── Changelog rows ── */
+    .log-row { padding: 6px 14px; border-bottom: 1px solid #f1f3f4; }
+    .log-row:last-of-type { border-bottom: none; }
+    .log-title {
+      font-size: 11px;
+      overflow: hidden; white-space: nowrap; text-overflow: ellipsis;
+      margin-bottom: 2px;
+    }
+    .log-title a { color: #1a73e8; text-decoration: none; }
+    .log-title a:hover { text-decoration: underline; }
+    .log-meta { font-size: 10px; color: #5f6368; display: flex; gap: 6px; align-items: center; }
+    .log-change { font-weight: 500; color: #3c4043; }
+    .log-delta { color: #137333; font-weight: 600; }
+    .log-time { margin-left: auto; color: #9aa0a6; }
+
+    .empty {
+      padding: 28px 14px; text-align: center;
+      color: #80868b; font-size: 11px; line-height: 1.6;
+    }
+
+    .clear-btn {
+      display: block; margin: 8px auto 10px;
+      padding: 4px 12px; font-size: 11px;
+      cursor: pointer; border: 1px solid #dadce0;
+      border-radius: 4px; background: #fff; color: #5f6368;
+    }
+    .clear-btn:hover { background: #f1f3f4; }
+
+    /* ── Footer ── */
+    .footer {
+      display: flex;
+      align-items: center;
+      padding: 7px 14px;
+      border-top: 1px solid #e0e0e0;
+      background: #f8f9fa;
+      gap: 10px;
+    }
+    .footer-label {
+      flex: 1; font-size: 11px; color: #3c4043;
+      display: flex; align-items: center; gap: 6px;
+    }
+    .status-text { font-size: 10px; font-weight: 600; }
+    .status-text.on  { color: #137333; }
+    .status-text.off { color: #d93025; }
+
+    .toggle { position: relative; display: inline-block; width: 36px; height: 20px; }
+    .toggle input { opacity: 0; width: 0; height: 0; }
+    .slider {
+      position: absolute; inset: 0;
+      background: #dadce0; border-radius: 20px; cursor: pointer;
+      transition: background .2s;
+    }
+    .slider::before {
+      content: ''; position: absolute;
+      width: 14px; height: 14px; left: 3px; top: 3px;
+      background: #fff; border-radius: 50%; transition: transform .2s;
+    }
+    .toggle input:checked + .slider { background: #1a73e8; }
+    .toggle input:checked + .slider::before { transform: translateX(16px); }
   </style>
 </head>
 <body>
-  very good self viewing blocker
+
+<header>
+  <h1>🛡️ Buganizer View Tracker</h1>
+  <span class="badge" id="changeCount"></span>
+</header>
+
+<div class="summary-bar" id="summary">Loading…</div>
+
+<div class="tabs">
+  <div class="tab active" data-tab="snapshots">Current Views</div>
+  <div class="tab" data-tab="changelog">Change Log</div>
+</div>
+
+<div class="panel active" id="snapshots">
+  <div class="filter-bar">
+    <button class="filter-tab active" data-filter="all">All</button>
+    <button class="filter-tab" data-filter="active">With views</button>
+    <button class="filter-tab" data-filter="changed">Increased</button>
+  </div>
+  <div id="snapshots-list">
+    <div class="empty">No data yet.<br>Visit your Buganizer issue list while the extension is enabled.</div>
+  </div>
+</div>
+
+<div class="panel" id="changelog">
+  <div class="empty">No increases recorded yet.</div>
+</div>
+
+<div class="footer">
+  <div class="footer-label">
+    <span>Self-view blocker</span>
+    <span class="status-text on" id="statusText">ON</span>
+  </div>
+  <label class="toggle">
+    <input type="checkbox" id="blockingToggle" checked>
+    <span class="slider"></span>
+  </label>
+</div>
+
+<script src="popup.js"></script>
 </body>
 </html>
