@@ -1,4 +1,4 @@
-let blockingEnabled = document.documentElement.dataset.svbEnabled !== 'false';
+let blockingEnabled = false; // bridge.js will fire __buganizerBlockingState__ with the real value from storage
 window.addEventListener('__buganizerBlockingState__', (e) => {
   blockingEnabled = e.detail === 'true';
 });

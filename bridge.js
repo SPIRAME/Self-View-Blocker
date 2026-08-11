@@ -1,5 +1,7 @@
 chrome.storage.local.get('blockingEnabled', (store) => {
-  document.documentElement.dataset.svbEnabled = String(store.blockingEnabled !== false);
+  const enabled = store.blockingEnabled !== false;
+  document.documentElement.dataset.svbEnabled = String(enabled);
+  window.dispatchEvent(new CustomEvent('__buganizerBlockingState__', { detail: String(enabled) }));
 });
 
 window.addEventListener('__buganizerViewData__', (e) => {
