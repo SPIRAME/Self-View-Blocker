@@ -10,10 +10,23 @@ function parseBuganizerBody(text) {
   catch (e) { return null; }
 }
 
-function extractViews(data) {
+function extractViews(data, email) {
   if (!data) return null;
 
-  
+  function isOwnIssue(issue) {
+    if (!email) return true;
+    try {
+      const inner = issue[2];
+      const reporter = Array.isArray(inner[6]) ? (inner[6][0] || '').toLowerCase() : '';
+      if (reporter === email) return true;
+      const ccs = Array.isArray(inner[9]) ? inner[9] : [];
+      for (const cc of ccs) {
+        if (Array.isArray(cc) && (cc[0] || '').toLowerCase() === email) return true;
+      }
+    } catch(e) {}
+    return false;
+  }
+
   try {
     const pages = data[0][6];
     if (Array.isArray(pages)) {
@@ -22,6 +35,7 @@ function extractViews(data) {
         if (!Array.isArray(page)) continue;
         for (const issue of page) {
           const id = issue[1]; if (!id) continue;
+          if (!isOwnIssue(issue)) continue;
           const title = Array.isArray(issue[2]) && issue[2][5] ? issue[2][5] : String(id);
           const slot  = issue[46];
           const views7d = (Array.isArray(slot) && slot[1] != null) ? slot[1] : 0;
@@ -32,13 +46,13 @@ function extractViews(data) {
     }
   } catch(e) {}
 
-  
   try {
     const flat = data[0][2][0];
     if (Array.isArray(flat)) {
       const results = [];
       for (const issue of flat) {
         const id = issue[1]; if (!id) continue;
+        if (!isOwnIssue(issue)) continue;
         const title = Array.isArray(issue[2]) && issue[2][5] ? issue[2][5] : String(id);
         const slot  = issue[46];
         const views7d = (Array.isArray(slot) && slot[1] != null) ? slot[1] : 0;
@@ -56,16 +70,38 @@ function pathKey(url) {
   catch { return url; }
 }
 
+function detectEmail() {
+  try {
+    if (window.buganizerSessionJspb &&
+        Array.isArray(window.buganizerSessionJspb) &&
+        Array.isArray(window.buganizerSessionJspb[0])) {
+      const email = window.buganizerSessionJspb[0][0];
+      if (email && email.includes('@')) return email.toLowerCase();
+    }
+  } catch(e) {}
+
+  try {
+    const scripts = document.querySelectorAll('script:not([src])');
+    for (const s of scripts) {
+      const m = s.textContent.match(/buganizerSessionJspb\s*=\s*\[\s*\[\s*"([^"]+@[^"]+)"/);
+      if (m) return m[1].toLowerCase();
+    }
+  } catch(e) {}
+
+  return null;
+}
+
 function handleResponse(url, responseText, status) {
   if (status !== 200) return;
   const key = pathKey(url);
   const data = parseBuganizerBody(responseText);
-  const views = extractViews(data);
+  const email = detectEmail();
+  if (!email) return;
+  const views = extractViews(data, email);
   if (views && views.length) {
     lastGoodResponse[key] = responseText;
-    console.log('[SVB] got', views.length, 'issues from', key);
     window.dispatchEvent(new CustomEvent('__buganizerViewData__', {
-      detail: JSON.stringify(views)
+      detail: JSON.stringify({ views, email })
     }));
   }
 }
@@ -76,40 +112,31 @@ function isRelevantUrl(url) {
 
 (function() {
   const NativeXHR = window.XMLHttpRequest;
-
   class InterceptedXHR extends NativeXHR {
     open(method, url, ...rest) {
       this._svbUrl = url;
       return super.open(method, url, ...rest);
     }
-
     send(body) {
       const url = this._svbUrl || '';
-
-      
       if (blockingEnabled && url && url.includes('read_timestamp') && body) {
         try {
           const parsed = JSON.parse(body);
           if (parsed[3]) { parsed[3][1] = 1; parsed[3][2] = 0; body = JSON.stringify(parsed); }
         } catch(e) {}
       }
-
       if (isRelevantUrl(url)) {
         this.addEventListener('readystatechange', () => {
           if (this.readyState === 4) handleResponse(url, this.responseText, this.status);
         });
       }
-
       return super.send(body);
     }
   }
-
-  
   Object.defineProperty(InterceptedXHR, 'name', { value: 'XMLHttpRequest' });
   for (const key of Object.keys(NativeXHR)) {
     try { InterceptedXHR[key] = NativeXHR[key]; } catch(e) {}
   }
-
   window.XMLHttpRequest = InterceptedXHR;
 })();
 
@@ -118,17 +145,16 @@ window.fetch = function(...args) {
   const req = args[0];
   const url = typeof req === 'string' ? req : (req && req.url ? req.url : '');
   let opts = args[1] || {};
-
   if (blockingEnabled && url.includes('read_timestamp') && opts.body) {
     try {
       const parsed = JSON.parse(opts.body);
       if (parsed[3]) {
         parsed[3][1] = 1; parsed[3][2] = 0;
-        opts = { ...opts, body: JSON.stringify(parsed) }; args[1] = opts;
+        opts = Object.assign({}, opts, { body: JSON.stringify(parsed) });
+        args[1] = opts;
       }
     } catch(e) {}
   }
-
   if (isRelevantUrl(url)) {
     return origFetch.apply(this, args).then(response => {
       response.clone().text()
@@ -137,17 +163,21 @@ window.fetch = function(...args) {
       return response;
     });
   }
-
   return origFetch.apply(this, args);
 };
 
 window.addEventListener('__svbFetchViews__', (e) => {
   const key = pathKey(e.detail);
   const cached = lastGoodResponse[key];
-  const views = cached ? (extractViews(parseBuganizerBody(cached)) || []) : [];
+  const email = detectEmail();
+  if (!email) {
+    window.dispatchEvent(new CustomEvent('__svbFetchViewsResult__', {
+      detail: JSON.stringify({ views: [], email: null })
+    }));
+    return;
+  }
+  const views = cached ? (extractViews(parseBuganizerBody(cached), email) || []) : [];
   window.dispatchEvent(new CustomEvent('__svbFetchViewsResult__', {
-    detail: JSON.stringify(views)
+    detail: JSON.stringify({ views, email })
   }));
 });
-
-console.log('[SVB] content.js loaded, blockingEnabled=', blockingEnabled);

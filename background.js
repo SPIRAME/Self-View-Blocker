@@ -1,6 +1,7 @@
-const MAX_CHANGELOG  = 200;
-const SEVEN_DAYS_MS  = 7 * 24 * 60 * 60 * 1000;
-const WATCHED_PATHS  = ['/action/issues/list', '/action/issues/batch'];
+const MAX_CHANGELOG = 200;
+const SEVEN_DAYS_MS = 7 * 24 * 60 * 60 * 1000;
+const WATCHED_PATHS = ['/action/issues/list', '/action/issues/batch'];
+const URL_FILTER    = { urls: ['*://issuetracker.google.com/*'] };
 
 const pending = new Map();
 
@@ -12,7 +13,7 @@ chrome.webRequest.onBeforeRequest.addListener(
       pending.set(details.requestId, { url: details.url, tabId: details.tabId });
     }
   },
-  { urls: ['*:
+  URL_FILTER
 );
 
 chrome.webRequest.onCompleted.addListener(
@@ -22,55 +23,61 @@ chrome.webRequest.onCompleted.addListener(
     pending.delete(details.requestId);
     if (tabId >= 0) askContentScriptToFetch(url, tabId);
   },
-  { urls: ['*:
+  URL_FILTER
 );
 
 chrome.webRequest.onErrorOccurred.addListener(
   (details) => pending.delete(details.requestId),
-  { urls: ['*:
+  URL_FILTER
 );
 
 function askContentScriptToFetch(url, tabId) {
   chrome.tabs.sendMessage(tabId, { type: 'FETCH_VIEWS', url }, (response) => {
-    if (chrome.runtime.lastError) return; 
-    if (response && Array.isArray(response.views)) {
-      processViewData(response.views);
+    if (chrome.runtime.lastError) return;
+    if (response && Array.isArray(response.views) && response.email) {
+      processViewData(response.views, response.email);
     }
   });
 }
 
 chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
-  if (msg.type === 'VIEW_DATA' && Array.isArray(msg.issueViews)) {
-    processViewData(msg.issueViews)
+  if (msg.type === 'VIEW_DATA' && Array.isArray(msg.issueViews) && msg.email) {
+    processViewData(msg.issueViews, msg.email)
       .then(() => sendResponse({ ok: true }))
       .catch(() => sendResponse({ ok: false }));
-    return true; 
+    return true;
   }
 });
 
-async function processViewData(issueViews) {
+async function processViewData(issueViews, email) {
   if (!issueViews || !issueViews.length) return;
 
-  const now   = Date.now();
-  const store = await chrome.storage.local.get(['snapshots', 'changelog']);
-  const snapshots = store.snapshots || {};
-  const changelog  = store.changelog  || [];
-  let   changed    = false;
+  const now          = Date.now();
+  const store        = await chrome.storage.local.get(['snapshots', 'changelog', 'accounts']);
+  const allSnapshots = store.snapshots || {};
+  const changelog    = store.changelog || [];
+  const accounts     = store.accounts  || [];
+  let   changed      = false;
+
+  if (!accounts.includes(email)) {
+    accounts.push(email);
+    changed = true;
+  }
+
+  const snapshots = allSnapshots[email] || {};
 
   for (const { id, title, views7d } of issueViews) {
     const key  = String(id);
     const snap = snapshots[key];
 
-    
     if (!snap) {
       snapshots[key] = { id, title, baseline: views7d, current: views7d, windowStart: now };
       changed = true;
       continue;
     }
 
-    snap.title = title; 
+    snap.title = title;
 
-    
     const windowExpired = (now - snap.windowStart) >= SEVEN_DAYS_MS;
     if (views7d < snap.current || windowExpired) {
       snap.baseline    = views7d;
@@ -80,7 +87,6 @@ async function processViewData(issueViews) {
       continue;
     }
 
-    
     if (views7d > snap.current) {
       const ev = { ts: now, id, title, from: snap.current, to: views7d };
       changelog.unshift(ev);
@@ -91,8 +97,9 @@ async function processViewData(issueViews) {
   }
 
   if (changed) {
+    allSnapshots[email] = snapshots;
     if (changelog.length > MAX_CHANGELOG) changelog.length = MAX_CHANGELOG;
-    await chrome.storage.local.set({ snapshots, changelog });
+    await chrome.storage.local.set({ snapshots: allSnapshots, changelog, accounts });
     chrome.action.setBadgeText({ text: changelog.length > 0 ? String(changelog.length) : '' });
     chrome.action.setBadgeBackgroundColor({ color: '#1a73e8' });
   }
@@ -101,10 +108,10 @@ async function processViewData(issueViews) {
 function fireNotification({ id, title, from, to }) {
   const short = title.length > 80 ? title.slice(0, 77) + '…' : title;
   chrome.notifications.create(`view-${id}-${Date.now()}`, {
-    type:     'basic',
-    iconUrl:  'icon.png',
-    title:    '📈 View count increased',
-    message:  `${short}\n7d views: ${from} → ${to}`,
+    type:    'basic',
+    iconUrl: 'icon.png',
+    title:   'View count increased',
+    message: `${short}\n7d views: ${from} → ${to}`,
     priority: 1
   });
 }

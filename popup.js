@@ -9,13 +9,13 @@ document.querySelectorAll('.tab').forEach(tab => {
 function esc(s) {
   return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
 }
-function issueUrl(id) { return `https:
+function issueUrl(id) { return 'https://issuetracker.google.com/issues/' + id; }
 function timeAgo(ts) {
   const s = Math.floor((Date.now() - ts) / 1000);
-  if (s < 60) return `${s}s ago`;
-  if (s < 3600) return `${Math.floor(s/60)}m ago`;
-  if (s < 86400) return `${Math.floor(s/3600)}h ago`;
-  return `${Math.floor(s/86400)}d ago`;
+  if (s < 60) return s + 's ago';
+  if (s < 3600) return Math.floor(s/60) + 'm ago';
+  if (s < 86400) return Math.floor(s/3600) + 'h ago';
+  return Math.floor(s/86400) + 'd ago';
 }
 
 function renderSnapshots(snapshots, filter) {
@@ -25,40 +25,28 @@ function renderSnapshots(snapshots, filter) {
     panel.innerHTML = '<div class="empty">No data yet.<br>Visit your Buganizer issue list page<br>while the extension is enabled.</div>';
     return;
   }
-
-  
   if (filter === 'active') entries = entries.filter(s => s.current > 0);
   if (filter === 'changed') entries = entries.filter(s => s.current > s.baseline);
-
-  
   entries.sort((a, b) => {
     const da = a.current - a.baseline, db = b.current - b.baseline;
     if (db !== da) return db - da;
     return b.current - a.current;
   });
-
   if (!entries.length) {
     panel.innerHTML = '<div class="empty">No matching issues.</div>';
     return;
   }
-
   panel.innerHTML = entries.map(snap => {
     const delta = snap.current - snap.baseline;
     const hasChange = delta > 0;
     const deltaHtml = hasChange
-      ? `<span class="delta up">+${delta}</span>`
-      : `<span class="delta flat">—</span>`;
+      ? '<span class="delta up">+' + delta + '</span>'
+      : '<span class="delta flat">—</span>';
     const title = snap.title.length > 60 ? snap.title.slice(0, 57) + '…' : snap.title;
-    return `
-      <div class="issue-row${hasChange ? ' changed' : ''}">
-        <div class="issue-title">
-          <a href="${issueUrl(snap.id)}" target="_blank" title="${esc(snap.title)}">${esc(title)}</a>
-        </div>
-        <div class="views-pill">
-          ${deltaHtml}
-          <span class="views-now">${snap.current}</span>
-        </div>
-      </div>`;
+    return '<div class="issue-row' + (hasChange ? ' changed' : '') + '">' +
+      '<div class="issue-title"><a href="' + issueUrl(snap.id) + '" target="_blank" title="' + esc(snap.title) + '">' + esc(title) + '</a></div>' +
+      '<div class="views-pill">' + deltaHtml + '<span class="views-now">' + snap.current + '</span></div>' +
+      '</div>';
   }).join('');
 }
 
@@ -70,23 +58,18 @@ function renderChangelog(changelog) {
   }
   const rows = changelog.map(ev => {
     const title = ev.title.length > 55 ? ev.title.slice(0, 52) + '…' : ev.title;
-    return `
-    <div class="log-row">
-      <div class="log-title">
-        <a href="${issueUrl(ev.id)}" target="_blank" title="${esc(ev.title)}">${esc(title)}</a>
-      </div>
-      <div class="log-meta">
-        <span class="log-change">${ev.from} → ${ev.to} <span class="log-delta">(+${ev.to - ev.from})</span></span>
-        <span class="log-time">${timeAgo(ev.ts)}</span>
-      </div>
-    </div>`;
+    return '<div class="log-row">' +
+      '<div class="log-title"><a href="' + issueUrl(ev.id) + '" target="_blank" title="' + esc(ev.title) + '">' + esc(title) + '</a></div>' +
+      '<div class="log-meta"><span class="log-change">' + ev.from + ' → ' + ev.to + ' <span class="log-delta">(+' + (ev.to - ev.from) + ')</span></span>' +
+      '<span class="log-time">' + timeAgo(ev.ts) + '</span></div>' +
+      '</div>';
   }).join('');
-  panel.innerHTML = rows + `<button class="clear-btn" id="clearLog">Clear change log</button>`;
+  panel.innerHTML = rows + '<button class="clear-btn" id="clearLog">Clear change log</button>';
   document.getElementById('clearLog').addEventListener('click', async () => {
     await chrome.storage.local.set({ changelog: [] });
     chrome.action.setBadgeText({ text: '' });
     renderChangelog([]);
-    document.getElementById('changeCount').textContent = '0';
+    document.getElementById('changeCount').textContent = '';
   });
 }
 
@@ -117,34 +100,62 @@ toggle.addEventListener('change', () => {
   chrome.storage.local.set({ blockingEnabled: enabled });
 });
 
-function resetBaselines(snapshots) {
-  if (!snapshots || !Object.keys(snapshots).length) return;
+function renderSummary(snapshots) {
+  const entries = Object.values(snapshots);
+  document.getElementById('summary').textContent =
+    entries.length + ' tracked · ' +
+    entries.filter(s => s.current > 0).length + ' with views · ' +
+    entries.filter(s => s.current > s.baseline).length + ' increased';
+}
+
+function resetBaselines(allSnaps) {
+  if (!allSnaps) return;
   const updated = {};
-  for (const [key, snap] of Object.entries(snapshots)) {
-    updated[key] = { ...snap, baseline: snap.current };
+  for (const [email, snaps] of Object.entries(allSnaps)) {
+    if (snaps && typeof snaps === 'object' && !snaps.id) {
+      updated[email] = {};
+      for (const [key, snap] of Object.entries(snaps)) {
+        updated[email][key] = Object.assign({}, snap, { baseline: snap.current });
+      }
+    }
   }
-  chrome.storage.local.set({ snapshots: updated });
+  if (Object.keys(updated).length) chrome.storage.local.set({ snapshots: updated });
+}
+
+let allSnapshots = {};
+let currentEmail = null;
+
+function switchAccount(email) {
+  currentEmail = email;
+  currentSnapshots = allSnapshots[email] || {};
+  renderSnapshots(currentSnapshots, currentFilter);
+  renderSummary(currentSnapshots);
 }
 
 chrome.action.setBadgeText({ text: '' });
 
-chrome.storage.local.get(['snapshots', 'changelog', 'blockingEnabled'], (store) => {
-  currentSnapshots = store.snapshots || {};
+chrome.storage.local.get(['snapshots', 'changelog', 'blockingEnabled', 'accounts'], (store) => {
+  const rawSnaps = store.snapshots || {};
+  const accounts = store.accounts || [];
+
+  allSnapshots = rawSnaps;
+
+  const select = document.getElementById('accountSelect');
+  const accountBar = document.getElementById('accountBar');
+
+  if (accounts.length > 1) {
+    accountBar.classList.add('visible');
+    select.innerHTML = accounts.map(a => '<option value="' + esc(a) + '">' + esc(a) + '</option>').join('');
+    select.addEventListener('change', () => switchAccount(select.value));
+  }
+
+  currentEmail = accounts[0] || 'default';
+  currentSnapshots = allSnapshots[currentEmail] || {};
+
   renderSnapshots(currentSnapshots, currentFilter);
   renderChangelog(store.changelog || []);
-  const changeCount = (store.changelog || []).length;
-  document.getElementById('changeCount').textContent = changeCount || '';
+  document.getElementById('changeCount').textContent = (store.changelog || []).length || '';
   applyToggleUI(store.blockingEnabled !== false);
-
-  
-  const entries = Object.values(currentSnapshots);
-  const tracking = entries.length;
-  const withViews = entries.filter(s => s.current > 0).length;
-  const changed = entries.filter(s => s.current > s.baseline).length;
-  document.getElementById('summary').textContent =
-    `${tracking} tracked · ${withViews} with views · ${changed} increased`;
-
-  
-  
-  resetBaselines(store.snapshots);
+  renderSummary(currentSnapshots);
+  resetBaselines(rawSnaps);
 });

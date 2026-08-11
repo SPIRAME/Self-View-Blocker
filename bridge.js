@@ -4,7 +4,8 @@ chrome.storage.local.get('blockingEnabled', (store) => {
 
 window.addEventListener('__buganizerViewData__', (e) => {
   try {
-    chrome.runtime.sendMessage({ type: 'VIEW_DATA', issueViews: JSON.parse(e.detail) });
+    const { views, email } = JSON.parse(e.detail);
+    chrome.runtime.sendMessage({ type: 'VIEW_DATA', issueViews: views, email });
   } catch (err) {}
 });
 
@@ -14,9 +15,10 @@ chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
     const onResult = (e) => {
       window.removeEventListener('__svbFetchViewsResult__', onResult);
       try {
-        sendResponse({ views: JSON.parse(e.detail) });
+        const { views, email } = JSON.parse(e.detail);
+        sendResponse({ views, email });
       } catch {
-        sendResponse({ views: [] });
+        sendResponse({ views: [], email: 'default' });
       }
     };
     window.addEventListener('__svbFetchViewsResult__', onResult);
