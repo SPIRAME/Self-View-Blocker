@@ -56,16 +56,32 @@ function renderChangelog(changelog) {
     panel.innerHTML = '<div class="empty">No increases recorded yet.<br>The popup will notify you when views go up.</div>';
     return;
   }
-  const rows = changelog.map(ev => {
+  const rows = changelog.map((ev, i) => {
     const title = ev.title.length > 55 ? ev.title.slice(0, 52) + '…' : ev.title;
-    return '<div class="log-row">' +
+    return '<div class="log-row" data-idx="' + i + '">' +
+      '<button class="log-remove" data-idx="' + i + '" title="Remove">✕</button>' +
       '<div class="log-title"><a href="' + issueUrl(ev.id) + '" target="_blank" title="' + esc(ev.title) + '">' + esc(title) + '</a></div>' +
       '<div class="log-meta"><span class="log-change">' + ev.from + ' → ' + ev.to + ' <span class="log-delta">(+' + (ev.to - ev.from) + ')</span></span>' +
       '<span class="log-time">' + timeAgo(ev.ts) + '</span></div>' +
       '</div>';
   }).join('');
   panel.innerHTML = rows + '<button class="clear-btn" id="clearLog">Clear change log</button>';
+
+  panel.querySelectorAll('.log-remove').forEach(btn => {
+    btn.addEventListener('click', async () => {
+      const idx = parseInt(btn.dataset.idx);
+      // Find and remove this entry from allChangelog by matching ts+id
+      const target = changelog[idx];
+      allChangelog = allChangelog.filter(ev => !(ev.ts === target.ts && ev.id === target.id));
+      await chrome.storage.local.set({ changelog: allChangelog });
+      const filteredLog = allChangelog.filter(ev => !ev.email || ev.email === currentEmail);
+      renderChangelog(filteredLog);
+      document.getElementById('changeCount').textContent = filteredLog.length || '';
+    });
+  });
+
   document.getElementById('clearLog').addEventListener('click', async () => {
+    allChangelog = [];
     await chrome.storage.local.set({ changelog: [] });
     chrome.action.setBadgeText({ text: '' });
     renderChangelog([]);
